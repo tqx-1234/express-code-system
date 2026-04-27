@@ -1,0 +1,738 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1.0">
+    <title>取件码管理系统</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+</head>
+<body>
+    <div id="app">
+        <!-- 登陆界面 -->
+        <div v-if="!isLoggedIn" class="login-page">
+            <div class="login-container">
+                <div class="login-card">
+                    <h2>取件码管理系统</h2>
+                    <p class="subtitle">请登录您的账户</p>
+                    
+                    <div class="form-group">
+                        <input v-model="loginForm.username" placeholder="用户名" class="form-input">
+                    </div>
+                    
+                    <div class="form-group">
+                        <input v-model="loginForm.password" type="password" placeholder="密码" class="form-input">
+                    </div>
+                    
+                    <button @click="login" class="login-btn">登录</button>
+                    
+                    <div class="register-link">
+                        <span>没有账户？</span>
+                        <a href="#" @click="showRegister = true">立即注册</a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 注册弹窗 -->
+            <div v-if="showRegister" class="modal-overlay">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3>用户注册</h3>
+                        <button @click="showRegister = false" class="close-btn">&times;</button>
+                    </div>
+                    
+                    <div class="form-group">
+                        <input v-model="registerForm.username" placeholder="用户名" id="reg-username" class="form-input">
+                    </div>
+                    
+                    <div class="form-group">
+                        <input v-model="registerForm.password" type="password" placeholder="密码" id="reg-password" class="form-input">
+                    </div>
+                    
+                    <div class="form-group">
+                        <input v-model="registerForm.confirmPassword" type="password" placeholder="确认密码" id="reg-confirm" class="form-input">
+                    </div>
+                    
+                    <div class="modal-actions">
+                        <button @click="register" class="register-btn">注册</button>
+                        <button @click="showRegister = false" class="cancel-btn">取消</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 主界面 -->
+        <div v-else>
+            <header class="header">
+                <div class="header-content">
+                    <h1>取件码管理系统</h1>
+                    <div class="user-info">
+                        欢迎， {{ currentUser }}!
+                        <button @click="logout" class="logout-btn">退出</button>
+                    </div>
+                </div>
+
+                <!-- 导航菜单 -->
+                <nav class="main-nav">
+                    <button @click="currentView = 'dashboard'" 
+                            :class="{ active: currentView === 'dashboard' }">
+                        首页
+                    </button>
+                    <button @click="currentView = 'statistics'" 
+                            :class="{ active: currentView === 'statistics' }">
+                        数据统计
+                    </button>
+                    <button @click="openListManager" :class="{ active: showListManager }">
+                        列表管理
+                    </button>
+                    <button @click="currentView = 'settings'" 
+                            :class="{ active: currentView === 'settings' }">
+                        系统设置
+                    </button>
+                    <button @click="currentView = 'profile'" 
+                            :class="{ active: currentView === 'profile' }">
+                        个人资料
+                    </button>
+                </nav>
+            </header>
+
+            <!-- 根据当前视图显示不同内容 -->
+            <div class="main-content">
+                <!-- 首页 -->
+                <div v-if="currentView === 'dashboard'">
+                    <!-- 添加取件码区域 -->
+                    <div class="add-section">
+                        <h3>添加取件码</h3>
+                        <div class="form">
+                            <select v-model="newCode.platform">
+                                <option value="pinduoduo">拼多多</option>
+                                <option value="jingdong">京东</option>
+                                <option value="taobao">淘宝</option>
+                                <option value="meituan">美团</option>
+                                <option value="other">其他</option>
+                            </select>
+                            <input type="text" v-model="newCode.code" placeholder="输入取件码" @keyup.enter="addCode">
+                            <button @click="addCode">添加</button>
+                        </div>
+                    </div>
+
+                    <!-- 搜索区域 -->
+                    <div class="search-section">
+                        <h3>搜索取件码</h3>
+                        <div class="search-form">
+                            <select v-model="searchQuery.platform" class="form-select">
+                                <option value="">所有平台</option>
+                                <option value="pinduoduo">拼多多</option>
+                                <option value="jingdong">京东</option>
+                                <option value="taobao">淘宝</option>
+                                <option value="meituan">美团</option>
+                                <option value="other">其他</option>
+                            </select>
+                            
+                            <input type="date" v-model="searchQuery.date" class="form-input">
+                            
+                            <input type="text" v-model="searchQuery.keyword" placeholder="输入取件码关键词" class="form-input">
+                            
+                            <button @click="searchCodes" class="search-btn">搜索</button>
+                            <button @click="resetSearch" class="btn btn-secondary">重置</button>
+                        </div>
+                    </div>
+
+                    <!-- 搜索结果 -->
+                    <div v-if="showSearchResults" class="search-results-section">
+                        <h3>搜索结果 ({{ searchResults.length }})</h3>
+                        <div class="search-actions">
+                            <button @click="showSearchResults = false" class="btn btn-secondary">
+                                返回全部列表
+                            </button>
+                        </div>
+                        
+                        <div v-if="searchResults.length > 0">
+                            <div v-for="code in searchResults" :key="code.id" class="code-item" :class="{ completed: code.status === 'completed' }">
+                                <span class="platform" :style="{color: code.platform_color}">
+                                    {{ getPlatformName(code.platform) }}
+                                </span>
+                                <span class="pickup-code">{{ code.pickup_code }}</span>
+                                <span class="time">{{ formatTime(code.received_time) }}</span>
+                                <span class="status" :class="code.status">
+                                    {{ code.status === 'pending' ? '待取件' : '已取件' }}
+                                </span>
+                                <button v-if="code.status === 'pending'" 
+                                        @click="completedCode(code.id)" 
+                                        class="complete-btn">
+                                    标记已取
+                                </button>
+                            </div>
+                        </div>
+                        <div v-else class="empty-state">
+                            未找到匹配的取件码
+                        </div>
+                    </div>
+
+                    <!-- 待取件列表 -->
+                    <section class="pending-codes-section">
+                        <h3>待取件列表 ({{ pendingCodes.length }})</h3>
+                        <div v-if="pendingCodes.length > 0">
+                            <div v-for="code in pendingCodes" :key="code.id" class="code-item" :style="{borderLeftColor: code.platform_color}">
+                                <div class="code-info">
+                                    <!-- 列表标签（如果有） -->
+                                    <span v-if="code.list_name" class="list-tag" :style="{backgroundColor: getCodeListColor(code)}">
+                                        {{ code.list_name }}
+                                    </span>
+                                    
+                                    <span class="platform">{{ code.platform_name }}</span>
+                                    <span class="pickup-code">{{ code.pickup_code }}</span>
+                                    <span class="time">{{ formatTime(code.received_time) }}</span>
+                                </div>
+                                
+                                <div class="code-actions">
+                                    <!-- 分配列表按钮 -->
+                                    <div class="assign-dropdown">
+                                        <button @click="openAssignToListDialog(code)" class="assign-btn" title="分配到列表">
+                                            📁 分配
+                                        </button>
+                                    </div>
+                                    
+                                    <!-- 标记已取按钮 -->
+                                    <button v-if="code.status === 'pending'" 
+                                            @click="completedCode(code.id)" 
+                                            class="complete-btn">
+                                        标记已取
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <div v-else class="empty-state">
+                            暂无待取快递
+                        </div>
+                    </section>
+                    
+                    <!-- 已取件记录 -->
+                    <section class="history-section">
+                        <h3>已取件记录 ({{ completedCodes.length }})</h3>
+                        <div v-if="completedCodes.length > 0">
+                            <div v-for="code in completedCodes" :key="code.id" class="code-item completed" :style="{borderLeftColor: code.platform_color}">
+                                <span class="platform" :style="{color: code.platform_color}">
+                                    {{ code.platform_name }}
+                                </span>
+                                <span class="pickup-code">{{ code.pickup_code }}</span>
+                                <span class="time">{{ formatTime(code.received_time) }}</span>
+                            </div>
+                        </div>
+                        <div v-else class="empty-state">
+                            暂无已取件记录
+                        </div>
+                    </section>
+                </div>
+
+                <!-- 数据统计页面 -->
+                <div v-if="currentView === 'statistics'" class="page-content">
+                    <h2>数据统计</h2>
+                    <div class="stats-cards">
+                        <div class="stat-card">
+                            <h3>总取件数</h3>
+                            <p class="stat-number">{{ codes.length }}</p>
+                        </div>
+                        <div class="stat-card">
+                            <h3>待取件</h3>
+                            <p class="stat-number">{{ pendingCodes.length }}</p>
+                        </div>
+                        <div class="stat-card">
+                            <h3>已取件</h3>
+                            <p class="stat-number">{{ completedCodes.length }}</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 系统设置页面 -->
+                <div v-if="currentView === 'settings'" class="page-content">
+                    <h2>系统设置</h2>
+                    
+                    <div class="settings-panel">
+                        <!-- 主题选择 -->
+                        <div class="setting-group">
+                            <label>主题配色：</label>
+                            <div class="theme-selector">
+                                <button 
+                                    v-for="theme in themeOptions" 
+                                    :key="theme.value"
+                                    @click="settings.theme = theme.value; applySettings()"
+                                    :class="['theme-btn', { active: settings.theme === theme.value }]"
+                                    :data-theme="theme.value"
+                                >
+                                    {{ theme.label }}
+                                </button>
+                            </div>
+                        </div>
+        
+                        <!-- 字体大小 -->
+                        <div class="setting-group">
+                            <label>字体大小：</label>
+                            <select v-model="settings.fontSize" @change="applySettings()" class="form-select">
+                                <option v-for="size in fontSizeOptions" :value="size.value">
+                                    {{ size.label }}
+                                </option>
+                            </select>
+                        </div>
+        
+                        <!-- 字体家族 -->
+                        <div class="setting-group">
+                            <label>字体：</label>
+                            <select v-model="settings.fontFamily" @change="applySettings()" class="form-select">
+                                <option v-for="font in fontFamilyOptions" :value="font.value">
+                                    {{ font.label }}
+                                </option>
+                            </select>
+                        </div>
+                        
+                        <!-- 主色调 -->
+                        <div class="setting-group">
+                            <label>主色调：</label>
+                            <div class="color-picker-group">
+                                <input 
+                                    type="color" 
+                                    v-model="settings.primaryColor" 
+                                    @change="applySettings()"
+                                    class="color-picker"
+                                >
+                                <span class="color-value">{{ settings.primaryColor }}</span>
+                            </div>
+                        </div>
+                        
+                        <!-- 圆角大小 -->
+                        <div class="setting-group">
+                            <label>圆角大小：</label>
+                            <select v-model="settings.borderRadius" @change="applySettings()" class="form-select">
+                                <option value="0px">直角</option>
+                                <option value="4px">小圆角</option>
+                                <option value="8px">中圆角</option>
+                                <option value="12px">大圆角</option>
+                                <option value="16px">超大圆角</option>
+                            </select>
+                        </div>
+                        
+                        <!-- 操作按钮 -->
+                        <div class="setting-actions">
+                            <button @click="resetSettings()" class="btn btn-secondary">恢复默认设置</button>
+                            <button @click="applySettings()" class="btn btn-primary">应用设置</button>
+                        </div>
+                        
+                        <!-- 预览区域 -->
+                        <div class="preview-section">
+                            <h3>预览效果</h3>
+                            <div class="preview-card">
+                                <div class="preview-header">
+                                    <span class="platform" style="color: var(--primary-color)">拼多多</span>
+                                    <span class="pickup-code">2-3-2401</span>
+                                </div>
+                                <div class="preview-time">2024/01/15 14:30:22</div>
+                                <button class="preview-btn">标记已取</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 个人资料页面 -->
+                <div v-if="currentView === 'profile'" class="page-content">
+                    <h2>个人资料</h2>
+                    
+                    <div class="profile-panel">
+                        <!-- 当前用户信息 -->
+                        <div class="profile-section">
+                            <h3>当前用户</h3>
+                            <div class="current-user-card">
+                                <div class="user-avatar">
+                                    {{ currentUser.charAt(0).toUpperCase() }}
+                                </div>
+                                <div class="user-info">
+                                    <div class="username">{{ currentUser }}</div>
+                                    <div class="user-stats">
+                                        <span>待取件: {{ pendingCodes.length }}</span>
+                                        <span>总包裹: {{ codes.length }}</span>
+                                        <span>已取件: {{ completedCodes.length }}</span>
+                                    </div>
+                                </div>
+                                <button @click="showUserSwitch = true" class="switch-user-btn">
+                                    切换用户
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- 通知设置 -->
+                        <div class="profile-section">
+                            <h3>通知设置</h3>
+                            <div class="settings-group">
+                                <div class="setting-item">
+                                    <label class="switch">
+                                        <input type="checkbox" v-model="profileSettings.receiveReminders">
+                                        <span class="slider"></span>
+                                    </label>
+                                    <div class="setting-info">
+                                        <div class="setting-title">接收滞留包裹提醒</div>
+                                        <div class="setting-desc">当有包裹滞留超过24小时时发送提醒</div>
+                                    </div>
+                                    <button @click="sendTestReminder" class="test-btn">测试</button>
+                                </div>
+
+                                <div class="setting-item" v-if="profileSettings.receiveReminders">
+                                    <label>每日提醒时间：</label>
+                                    <input 
+                                        type="time" 
+                                        v-model="profileSettings.reminderTime"
+                                        class="time-input"
+                                    >
+                                </div>
+
+                                <div class="setting-item">
+                                    <label class="switch">
+                                        <input type="checkbox" v-model="profileSettings.notificationSound">
+                                        <span class="slider"></span>
+                                    </label>
+                                    <div class="setting-info">
+                                        <div class="setting-title">通知声音</div>
+                                        <div class="setting-desc">接收提醒时播放提示音</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 数据管理 -->
+                        <div class="profile-section">
+                            <h3>数据管理</h3>
+                            <div class="data-actions">
+                                <button @click="exportUserData" class="btn btn-secondary">
+                                    📥 导出数据
+                                </button>
+                            </div>
+                            <div class="data-info">
+                                <p>数据统计：</p>
+                                <ul>
+                                    <li>待取件记录：{{ pendingCodes.length }} 条</li>
+                                    <li>历史记录：{{ completedCodes.length }} 条</li>
+                                    <li>总计：{{ codes.length }} 条记录</li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <!-- 操作按钮 -->
+                        <div class="profile-actions">
+                            <button @click="saveProfileSettings" class="btn btn-primary">
+                                保存设置
+                            </button>
+                            <button @click="loadProfileSettings" class="btn btn-secondary">
+                                恢复默认
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- 切换用户模态框 -->
+                    <div v-if="showUserSwitch" class="modal-overlay">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h3>切换用户</h3>
+                                <button @click="showUserSwitch = false" class="close-btn">&times;</button>
+                            </div>
+                            
+                            <div class="switch-user-info">
+                                <p>切换用户将退出当前账号，返回登录页面。</p>
+                                <div class="current-user-display">
+                                    <strong>当前用户：</strong>{{ currentUser }}
+                                </div>
+                            </div>
+
+                            <div class="modal-actions">
+                                <button @click="switchUser" class="btn btn-primary">
+                                    确认切换
+                                </button>
+                                <button @click="showUserSwitch = false" class="btn btn-secondary">
+                                    取消
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 列表管理器模态框 -->
+                <div v-if="showListManager" class="modal-overlay">
+                    <div class="modal-content wide-modal">
+                        <div class="modal-header">
+                            <h3>📋 列表管理</h3>
+                            <button @click="closeListManager" class="close-btn">&times;</button>
+                        </div>
+                        
+                        <div class="list-manager-content">
+                            <!-- 创建/编辑表单 -->
+                            <div class="list-form-section">
+                                <h4>{{ editingList ? '编辑列表' : '创建新列表' }}</h4>
+                                <div class="list-form">
+                                    <div class="form-group">
+                                        <label>列表名称：</label>
+                                        <input v-model="newListForm.name" type="text" 
+                                            placeholder="例如：办公室快递、家里快递" class="form-input">
+                                    </div>
+                                    
+                                    <div class="form-group">
+                                        <label>描述（可选）：</label>
+                                        <textarea v-model="newListForm.description" 
+                                                placeholder="列表描述" 
+                                                class="form-input" rows="2"></textarea>
+                                    </div>
+                                    
+                                    <div class="form-group">
+                                        <label>颜色标记：</label>
+                                        <div class="color-picker-container">
+                                            <div class="color-options-grid">
+                                                <button v-for="color in listColorOptions" 
+                                                        :key="color.value"
+                                                        @click="newListForm.color = color.value"
+                                                        :class="['color-option', { active: newListForm.color === color.value }]"
+                                                        :style="{ backgroundColor: color.value }"
+                                                        :title="color.label"
+                                                        type="button">
+                                                </button>
+                                            </div>
+                                            <div class="color-preview">
+                                                <div class="color-preview-box" :style="{ backgroundColor: newListForm.color }"></div>
+                                                <input type="color" 
+                                                    v-model="newListForm.color" 
+                                                    class="color-input"
+                                                    title="自定义颜色">
+                                                <span class="color-value">{{ newListForm.color.toUpperCase() }}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="form-actions">
+                                        <button v-if="editingList" @click="updateList" class="btn btn-primary create-btn">
+                                            保存修改
+                                        </button>
+                                        <button v-else @click="createNewList" class="btn btn-primary create-btn">
+                                            创建列表
+                                        </button>
+                                        
+                                        <button v-if="editingList" @click="cancelEdit" class="btn btn-secondary">
+                                            取消编辑
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- 列表展示 -->
+                            <div class="lists-display-section">
+                                <h4>我的列表 ({{ userLists.length }})</h4>
+                                
+                                <div v-if="userLists.length === 0" class="empty-state">
+                                    <p>还没有创建任何列表</p>
+                                    <p>创建一个列表来分类管理取件码吧！</p>
+                                </div>
+                                
+                                <!-- 修改列表卡片为可展开式 -->
+                                <div class="lists-grid" v-if="userLists.length > 0">
+                                    <div v-for="list in userLists" 
+                                        :key="list.id" 
+                                        class="list-card"
+                                        :class="{ expanded: expandedListId === list.id }"
+                                        :style="{ borderLeftColor: getListColor(list) }">
+                                        
+                                        <!-- 列表头部（可点击展开） -->
+                                        <div class="list-card-header" @click="toggleListExpansion(list.id)">
+                                            <div class="list-color-dot" :style="{ backgroundColor: getListColor(list) }"></div>
+                                            <div class="list-name">{{ list.name }}</div>
+                                            
+                                            <!-- 列表元信息 -->
+                                            <div class="list-meta-summary">
+                                                <span class="meta-item">📦 {{ list.code_count || 0 }} 个取件码</span>
+                                                <span class="meta-item">📅 {{ formatListDate(list.created_at) }}</span>
+                                            </div>
+                                            
+                                            <!-- 操作按钮 -->
+                                            <div class="list-actions" @click.stop>
+                                                <button @click="toggleListExpansion(list.id)" class="icon-btn" title="查看取件码">
+                                                    {{ expandedListId === list.id ? '👇' : '👉' }}
+                                                </button>
+                                                <button @click="startEditList(list)" class="icon-btn" title="编辑">
+                                                    ✏️
+                                                </button>
+                                                <button @click="deleteList(list.id)" class="icon-btn" title="删除">
+                                                    🗑️
+                                                </button>
+                                            </div>
+                                        </div>
+                                        
+                                        <!-- 列表描述 -->
+                                        <div class="list-description" v-if="list.description">
+                                            {{ list.description }}
+                                        </div>
+                                        
+                                        <!-- 展开的取件码内容（黑框部分） -->
+                                        <div v-if="expandedListId === list.id" class="list-codes-expanded">
+                                            <div class="expanded-header">
+                                                <h5>{{ list.name }} 的取件码</h5>
+                                                <div class="list-stats">
+                                                    <span class="stat-badge pending">待取件: {{ getListPendingCount(list.id) }}</span>
+                                                    <span class="stat-badge completed">已取件: {{ getListCompletedCount(list.id) }}</span>
+                                                </div>
+                                            </div>
+                                            
+                                            <!-- 取件码列表 -->
+                                            <div class="expanded-codes-container">
+                                                <div v-if="!listCodes[list.id] || listCodes[list.id].length === 0" class="empty-codes">
+                                                    <p>此列表暂无取件码</p>
+                                                    <button @click="openAssignToListDialogFromList(list)" class="btn btn-sm">
+                                                        分配取件码到此列表
+                                                    </button>
+                                                </div>
+                                                
+                                                <div v-else>
+                                                    <div v-for="code in listCodes[list.id]" 
+                                                        :key="code.id" 
+                                                        class="expanded-code-item"
+                                                        :class="{ completed: code.status === 'completed' }">
+                                                        <div class="code-info">
+                                                            <span class="platform-badge" :style="{ backgroundColor: code.platform_color }">
+                                                                {{ getPlatformName(code.platform) }}
+                                                            </span>
+                                                            <span class="pickup-code">{{ code.pickup_code }}</span>
+                                                            <span class="time">{{ formatTime(code.received_time) }}</span>
+                                                            <span class="status-badge" :class="code.status">
+                                                                {{ code.status === 'pending' ? '待取件' : '已取件' }}
+                                                            </span>
+                                                        </div>
+                                                        
+                                                        <div class="code-actions">
+                                                            <button v-if="code.status === 'pending'" 
+                                                                    @click="completedCode(code.id)" 
+                                                                    class="complete-btn-small">
+                                                                标记已取
+                                                            </button>
+                                                            <button v-else 
+                                                                    @click="markCodeAsPending(code.id)" 
+                                                                    class="undo-btn">
+                                                                标记为待取
+                                                            </button>
+
+                                                            <!-- 从列表中移除按钮 -->
+                                                            <button @click="removeFromList(code.id, list.id)" 
+                                                                    class="remove-btn"
+                                                                    title="从列表中移除">
+                                                                ❌ 移除
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="modal-actions">
+                            <button @click="closeListManager" class="btn">关闭</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 分配到列表对话框 -->
+        <div v-if="showAssignToListDialog" class="modal-overlay">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>分配到列表</h3>
+                    <button @click="closeAssignToListDialog" class="close-btn">&times;</button>
+                </div>
+                                    
+                <div class="assign-dialog-content" v-if="selectedCodeForAssign">
+                    <div class="code-info-card">
+                        <h4>取件码信息</h4>
+                        <div class="info-grid">
+                            <div class="info-item">
+                                <label>取件码：</label>
+                                <span class="value">{{ selectedCodeForAssign.pickup_code }}</span>
+                            </div>
+                            <div class="info-item">
+                                <label>平台：</label>
+                                <span class="value">{{ selectedCodeForAssign.platform_name }}</span>
+                            </div>
+                            <div class="info-item">
+                                <label>状态：</label>
+                                <span class="value">{{ selectedCodeForAssign.status === 'pending' ? '待取件' : '已取件' }}</span>
+                            </div>
+                            <div class="info-item">
+                                <label>当前列表：</label>
+                                <span class="value" v-if="selectedCodeForAssign.list_name">
+                                    <span class="current-list-tag" :style="{backgroundColor: getCodeListColor(selectedCodeForAssign)}">
+                                        {{ selectedCodeForAssign.list_name }}
+                                    </span>
+                                </span>
+                                <span class="value" v-else>未分配</span>
+                            </div>
+                        </div>
+                    </div>
+                                        
+                    <div class="list-selection">
+                        <h4>选择目标列表</h4>
+                        <div v-if="userLists.length === 0" class="empty-lists">
+                            <p>您还没有创建任何列表</p>
+                            <button @click="openListManager(); closeAssignToListDialog();" class="btn btn-primary">
+                                创建新列表
+                            </button>
+                        </div>
+                                            
+                        <div v-else class="list-options">
+                            <!-- 无列表选项 -->
+                            <div class="list-option" 
+                                :class="{ selected: targetListForAssign === '' }"
+                                @click="targetListForAssign = ''">
+                                <div class="list-option-content">
+                                    <div class="list-option-icon">📦</div>
+                                    <div class="list-option-info">
+                                        <div class="list-option-name">不分配到列表</div>
+                                        <div class="list-option-desc">保持在默认列表</div>
+                                    </div>
+                                </div>
+                            </div>
+                                                
+                            <!-- 用户列表选项 -->
+                            <div v-for="list in userLists" 
+                                :key="list.id"
+                                class="list-option" 
+                                :class="{ selected: targetListForAssign === list.id.toString() }"
+                                @click="targetListForAssign = list.id.toString()">
+                                <div class="list-option-content">
+                                    <div class="list-option-color" :style="{backgroundColor: list.color}"></div>
+                                    <div class="list-option-info">
+                                        <div class="list-option-name">{{ list.name }}</div>
+                                        <div class="list-option-desc">
+                                            <span v-if="list.description">{{ list.description }}</span>
+                                            <span v-else>{{ list.code_count || 0 }} 个取件码</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                                        
+                    <div class="modal-actions">
+                        <button @click="assignCodeToList" 
+                                class="btn btn-primary"
+                                :disabled="!targetListForAssign && targetListForAssign !== ''">
+                            确认分配
+                        </button>
+                        <button @click="closeAssignToListDialog" class="btn btn-secondary">
+                            取消
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    
+
+    <script src="app.js"></script>
+</body>
+</html>
+
